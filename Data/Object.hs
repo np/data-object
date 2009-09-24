@@ -25,6 +25,7 @@ module Data.Object
     , FromScalar (..)
     , ToScalar (..)
     , oLookup
+    , mapScalars
     ) where
 
 import qualified Data.ByteString.Lazy as B
@@ -37,6 +38,11 @@ data GenObject key val =
     | Sequence [GenObject key val]
     | Scalar val
     deriving (Show)
+
+mapScalars :: (valIn -> valOut) -> GenObject key valIn -> GenObject key valOut
+mapScalars f (Mapping x)  = Mapping  $ map (second $ mapScalars f) x
+mapScalars f (Sequence x) = Sequence $ map (mapScalars f) x
+mapScalars f (Scalar x)   = Scalar (f x)
 
 type Object = GenObject B.ByteString B.ByteString
 
