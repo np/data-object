@@ -1,6 +1,7 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverlappingInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 ---------------------------------------------------------
 --
 -- Module        : Data.Object.Raw
@@ -17,9 +18,8 @@
 -- This is especially useful for serializing to/from files like JSON and Yaml.
 ---------------------------------------------------------
 module Data.Object.Raw
-    ( RawObject
-    , FromRawObject (..)
-    , ToRawObject (..)
+    ( Raw
+    , RawObject
     , FromRaw (..)
     , ToRaw (..)
     , oLookup
@@ -32,87 +32,58 @@ import qualified Data.ByteString as BS
 import Data.ByteString.Class
 import Data.Time.Calendar
 import Safe (readMay)
-import Control.Monad ((<=<))
-import Control.Arrow
 
 type Raw = B.ByteString
 
 type RawObject = Object Raw Raw
 
-class ToRawObject a where
-    toRawObject :: a -> RawObject
-class FromRawObject a where
-    fromRawObject :: MonadFail m => RawObject -> m a
-
-class ToRawObject a => ToRaw a where
+class ToRaw a where
     toRaw :: a -> B.ByteString
-class FromRawObject a => FromRaw a where
+class FromRaw a where
     fromRaw :: MonadFail m => B.ByteString -> m a
 
 instance ToRaw Raw where
     toRaw = id
 instance FromRaw Raw where
     fromRaw = return
-instance ToRawObject Raw where
-    toRawObject = Scalar
-instance FromRawObject Raw where
-    fromRawObject = getScalar
+instance ToObject Raw key Raw where
+    toObject = Scalar
+instance FromObject Raw key Raw where
+    fromObject = getScalar
 
 instance ToRaw BS.ByteString where
     toRaw = toLazyByteString
 instance FromRaw BS.ByteString where
     fromRaw = return . fromLazyByteString
-instance ToRawObject BS.ByteString where
-    toRawObject = Scalar . toRaw
-instance FromRawObject BS.ByteString where
-    fromRawObject o = fromRawObject o >>= fromRaw
+instance ToObject BS.ByteString key Raw where
+    toObject = Scalar . toRaw
+instance FromObject BS.ByteString key Raw where
+    fromObject o = fromObject o >>= fromRaw
 
 instance ToRaw String where
     toRaw = toLazyByteString
 instance FromRaw String where
     fromRaw = return . fromLazyByteString
-instance ToRawObject String where
-    toRawObject = Scalar . toRaw
-instance FromRawObject String where
-    fromRawObject o = fromRawObject o >>= fromRaw
+instance ToObject String key Raw where
+    toObject = Scalar . toRaw
+instance FromObject String key Raw where
+    fromObject o = fromObject o >>= fromRaw
 
-instance ToRawObject o => ToRawObject [o] where
-    toRawObject = Sequence . map toRawObject
-instance FromRawObject o => FromRawObject [o] where
-    fromRawObject = mapM fromRawObject <=< getSequence
-
-instance (ToRaw bs, ToRawObject o) => ToRawObject [(bs, o)] where
-    toRawObject = Mapping . map (toRaw *** toRawObject)
-instance (FromRaw bs, FromRawObject o) => FromRawObject [(bs, o)] where
-    fromRawObject =
-        mapM (runKleisli (Kleisli fromRaw *** Kleisli fromRawObject))
-         <=< getMapping
-
-instance ToRawObject RawObject where
-    toRawObject = id
-instance FromRawObject RawObject where
-    fromRawObject = return
-
-instance (ToRaw key, ToRaw value) => ToRawObject (Object key value) where
-    toRawObject = mapKeysValues toRaw toRaw
-instance (FromRaw key, FromRaw value) => FromRawObject (Object key value) where
-    fromRawObject = mapKeysValuesM fromRaw fromRaw
-
-oLookup :: (MonadFail m, Eq a, Show a, FromRawObject b)
+oLookup :: (MonadFail m, Eq a, Show a, FromObject b k v)
         => a -- ^ key
-        -> [(a, RawObject)]
+        -> [(a, Object k v)]
         -> m b
 oLookup key pairs =
     case lookup key pairs of
         Nothing -> fail $ "Key not found: " ++ show key
-        Just x -> fromRawObject x
+        Just x -> fromObject x
 
 -- instances
 
 instance ToRaw Day where
     toRaw = toLazyByteString . show
-instance ToRawObject Day where
-    toRawObject = toRawObject . toRaw
+instance ToObject Day key Raw where
+    toObject = toObject . toRaw
 instance FromRaw Day where
     fromRaw bs = do
         let s = fromLazyByteString bs
@@ -127,30 +98,30 @@ instance FromRaw Day where
                 case x of
                     Just (y, m, d) -> return $ fromGregorian y m d
                     Nothing -> fail $ "Invalid day: " ++ s
-instance FromRawObject Day where
-    fromRawObject o = fromRawObject o >>= fromRaw
+instance FromObject Day key Raw where
+    fromObject o = fromObject o >>= fromRaw
 
 instance ToRaw Bool where
     toRaw b = toRaw $ if b then "true" else "false"
-instance ToRawObject Bool where
-    toRawObject = toRawObject . toRaw
+instance ToObject Bool key Raw where
+    toObject = toObject . toRaw
 instance FromRaw Bool where
     fromRaw bs =
         case fromLazyByteString bs of
             "true" -> return True
             "false" -> return False
             x -> fail $ "Invalid bool value: " ++ x
-instance FromRawObject Bool where
-    fromRawObject o = fromRawObject o >>= fromRaw
+instance FromObject Bool key Raw where
+    fromObject o = fromObject o >>= fromRaw
 
 instance ToRaw Int where
     toRaw = toRaw . show
-instance ToRawObject Int where
-    toRawObject = toRawObject . toRaw
+instance ToObject Int key Raw where
+    toObject = toObject . toRaw
 instance FromRaw Int where
     fromRaw bs =
         case readMay $ fromLazyByteString bs of
             Nothing -> fail $ "Invalid integer: " ++ fromLazyByteString bs
             Just i -> return i
-instance FromRawObject Int where
-    fromRawObject o = fromRawObject o >>= fromRaw
+instance FromObject Int key Raw where
+    fromObject o = fromObject o >>= fromRaw

@@ -1,4 +1,3 @@
-{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 ---------------------------------------------------------
 --
@@ -19,7 +18,7 @@ module Data.Object.String
     ) where
 
 import Data.Object.Raw
-import Data.Maybe (fromJust)
+import qualified Data.ByteString.Lazy.Char8 as B
 
 type StringObject = Object String String
 
@@ -28,11 +27,11 @@ class ToStringObject tso where
 instance ToStringObject StringObject where
     toStringObject = id
 instance ToStringObject RawObject where
-    toStringObject = fromJust . fromRawObject -- FIXME write safeFromRawObject
+    toStringObject = mapKeysValues B.unpack B.unpack
 
 class FromStringObject fso where
     fromStringObject :: StringObject -> fso
 instance FromStringObject StringObject where
     fromStringObject = id
 instance FromStringObject RawObject where
-    fromStringObject = toRawObject
+    fromStringObject = mapKeysValues B.pack B.pack

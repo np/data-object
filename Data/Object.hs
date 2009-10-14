@@ -1,3 +1,4 @@
+{-# LANGUAGE MultiParamTypeClasses, FlexibleInstances #-}
 ---------------------------------------------------------
 --
 -- Module        : Data.Object
@@ -21,6 +22,8 @@ module Data.Object
     , mapKeysValues
     , mapKeysValuesM
     , MonadFail
+    , ToObject(..)
+    , FromObject(..)
     , getScalar
     , getSequence
     , getMapping
@@ -28,7 +31,7 @@ module Data.Object
 
 import Control.Arrow
 import Control.Applicative
-import Control.Monad (liftM2, ap)
+import Control.Monad hiding (mapM)
 
 import Prelude hiding (mapM, sequence)
 
@@ -74,6 +77,29 @@ mapKeysValuesM fk fv (Sequence os) =
     Sequence <$> mapM (mapKeysValuesM fk fv) os
 mapKeysValuesM fk fv (Mapping pairs) = Mapping <$>
     mapM (uncurry (liftM2 (,)) . (fk *** mapKeysValuesM fk fv)) pairs
+
+class ToObject a k v where
+    toObject :: a -> Object k v
+class FromObject a k v where
+    fromObject :: MonadFail m => Object k v -> m a
+
+instance ToObject a k v => ToObject [a] k v where
+    toObject = Sequence . map toObject
+instance FromObject a k v => FromObject [a] k v where
+    fromObject = mapM fromObject <=< getSequence
+
+-- use Data.Map or an Assoc newtype
+instance ToObject a k v => ToObject [(k, a)] k v where
+    toObject = Mapping . map (second toObject)
+instance FromObject a k v => FromObject [(k, a)] k v where
+    fromObject =
+        mapM (runKleisli (second (Kleisli fromObject)))
+          <=< getMapping
+
+instance ToObject (Object key val) key val where
+    toObject = id
+instance FromObject (Object key val) key val where
+    fromObject = return
 
 instance Functor (Object key) where
     fmap = mapValues
